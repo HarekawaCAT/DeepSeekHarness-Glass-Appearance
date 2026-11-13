@@ -9,11 +9,9 @@ A glass layer for the DeepSeek Harness Web UI — custom wallpaper, per-panel op
 <!-- 截图：把图片放到 docs/screenshot.png 后取消下面这行注释 -->
 <!-- ![玻璃外观](docs/screenshot.png) -->
 
-安装
+## 安装
 
-没有构建步骤，也不需要 npm。三种装法任选：
-
-**方式一：一条命令（推荐）**
+方式一：
 
 在 DSH 里让 Agent 执行：
 
@@ -21,12 +19,12 @@ A glass layer for the DeepSeek Harness Web UI — custom wallpaper, per-panel op
 plugin_manager(action: "install_bundle", target: "git+https://github.com/HarekawaCAT/DeepSeekHarness-Glass-Appearance.git")
 ```
 
-**方式二：下载目录**
+方式二：
 
-下载本仓库的 zip 并解压（解压后要能直接看到 `package.json`），然后：
+下载本仓库的 zip 并解压（解压后出现 `package.json`），然后：
 
 ```
-plugin_manager(action: "install_bundle", target: "D:\\插件\\dsh-glass-appearance")
+plugin_manager(action: "install_bundle", target: "D:\\plugins\\dsh-glass-appearance")
 ```
 
 
@@ -39,15 +37,14 @@ plugin_manager(action: "install_bundle", target: "D:\\插件\\dsh-glass-appearan
 | 控件 | 作用 |
 |---|---|
 | 背景 | 3 套预设（极光 / 暮色 / 石墨） |
-| 选择图片… | 本地图片，读取后缩放到最长边 2200px 再存 JPEG，避免撑爆 localStorage |
+| 选择图片… | 本地图片自定义，最长边 2200px ，避免报错 |
 | 图片地址 | 也可以直接填 `https://…` 图片地址 |
-| 视频背景 | 开关。打开后可「选择视频文件…」（本地，仅本次运行有效）、填视频 `https://…` 地址（长期保留），或点「使用 resources/background.mp4」（见下） |
-| 背景遮罩 | 0–85%，在背景图上盖一层半透明遮罩，提高文字可读性；视频模式下会降低视频不透明度 |
+| 视频背景 | 开关，打开后可「选择视频文件…」（本地，仅单次运行有效）、填视频 `https://…` 地址（长期保留），或点「使用 resources/background.mp4」 |
+| 背景遮罩 | 提高文字可读性；视频模式下会降低视频不透明度 |
 | 不透明度 | 侧边栏 / 对话框与面板 / 卡片与代码块 / 菜单与弹层 / 输入框 / 添加文件按钮 / 我发的消息 / 确认目标对话框 / 回到底部按钮 / 悬停提示与详情框 |
-| 模糊 | 侧边栏 / 底边栏（输入框下方）/ 输入框 / 对话框 / 弹层与菜单 / 对话代码块 / 我发的消息 / 新会话按钮 / 添加文件按钮 / 确认目标对话框 / 回到底部按钮 / 悬停提示与详情框 |
+| 模糊 | 侧边栏 / 底边栏/ 输入框 / 对话框 / 弹层与菜单 / 对话代码块 / 我发的消息 / 新会话按钮 / 添加文件按钮 / 确认目标对话框 / 回到底部按钮 / 悬停提示与详情框 |
 | 文字颜色 | 主文字色；次级文字、说明、边框、hover 底色、主按钮底色按比例自动推导 |
-| 新会话标题 | 固定渲染英文 wordmark「DeepSeek HARNESS」，右上角标「Explore the unknown」（宿主 slogan 不可翻译，用文本替换实现） |
-| 诊断 | 「扫描不透明背景」列出当前界面仍然是不透明大色块的元素，用来找漏配的宿主面板 |
+| 新会话标题 | wordmark「DeepSeek HARNESS」，右上角标「Explore the unknown」 |
 | 恢复默认 | 全部回到默认值 |
 
 设置存在 localStorage（键 `dsh.glass-appearance.v3`），下次启动自动恢复；停用插件后完全还原。v2 的旧设置会自动迁移。
@@ -88,20 +85,8 @@ plugin_manager(action: "install_bundle", target: "D:\\插件\\dsh-glass-appearan
 
 ## 视频背景
 
-仓库里不带视频文件（20 MB 以上，不适合放进 git），自己准备一个即可：
-
 1. 把视频放到 `<插件目录>/resources/background.mp4`（也支持 `.webm`）；
 2. 设置 → 玻璃外观 → 背景 → 打开「视频背景」→ 点「使用 resources/background.mp4」。
-
-原理：插件的 Host 半边（`index.js`）把 `resources/` 通过本地路由 `/glass-assets/` 提供出去，所以视频是磁盘上的文件，重启后依然有效，也不受 GUI 端口变化影响。只服务该目录内的文件，路径穿越会被拒绝（403）；文件不存在时自动回退到背景图。
-
-## 实现与性能
-
-- 只有两个自有的 `<style>`：背景（含图片 data URL，仅在背景变化时重写）和 token/模糊层。拖动滑块时最多每帧重写一次，不走主题服务、不触发全应用重渲染。
-- 视频背景是唯一自己创建的元素：一个 `position: fixed; inset: 0; z-index: -1; object-fit: cover` 的静音循环 `<video>`，挂在 `body` 下、不接收鼠标事件，插件卸载时一并移除。开启视频时 `body` 背景改为透明，视频才透得出来。
-- `--dsw-alias-bg-base` 置为透明，背景图才能透出来；`html` 的 `color-scheme` 跟随当前配色。
-- 监听 `theme/change`，宿主切换深浅色时重新配色。
-- 模糊是唯一明显的 GPU 开销：卡顿就把对应滑块拉到 0。默认把「输入框」和「我发的消息」的模糊设为 0，只留底边栏一层，避免同一块区域叠多层 `backdrop-filter`。
 
 ## 兼容性
 
