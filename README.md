@@ -1,6 +1,6 @@
 # 玻璃外观 · dsh-glass-appearance
 
-给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Web UI 加一层玻璃质感：背景图铺在窗口最底层，侧边栏、对话框、卡片、菜单、输入框、消息气泡各自按百分比透明，模糊也能按面板分别调，文字颜色自己挑。
+给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Web UI 加一层玻璃质感：背景图自定义，侧边栏、对话框、卡片、菜单、输入框、消息气泡可自定义透明度与模糊，允许文字颜色自定义，支持明暗不同版本。
 
 A glass layer for the DeepSeek Harness Web UI — custom wallpaper, per-panel opacity, per-panel blur, and a text color you pick.
 
@@ -9,7 +9,7 @@ A glass layer for the DeepSeek Harness Web UI — custom wallpaper, per-panel op
 <!-- 截图：把图片放到 docs/screenshot.png 后取消下面这行注释 -->
 <!-- ![玻璃外观](docs/screenshot.png) -->
 
-## 安装
+安装
 
 没有构建步骤，也不需要 npm。三种装法任选：
 
@@ -29,17 +29,10 @@ plugin_manager(action: "install_bundle", target: "git+https://github.com/Harekaw
 plugin_manager(action: "install_bundle", target: "D:\\插件\\dsh-glass-appearance")
 ```
 
-**方式三：clone 后指目录**
 
-```
-git clone https://github.com/HarekawaCAT/DeepSeekHarness-Glass-Appearance.git
-```
+安装后到 设置 - 玻璃外观 调整。
 
-安装结果里出现 `application: applied` 即生效；若提示 `restart-required`，重启一次应用即可。
-
-安装后到 **设置 → 玻璃外观**（在「通用」和「模型」之间）调整。
-
-**卸载**：设置 → 插件里停用或移除，界面立即还原成默认外观。
+卸载：设置 - 插件里停用或移除，界面立即还原成默认外观。
 
 ## 有什么
 
