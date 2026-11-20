@@ -1,0 +1,4 @@
+# Local media: the Host half serves resources/ from disk, so clips stay on this machine.
+# See resources/README.txt for the file names the settings page looks for.
+resources/*
+!resources/README.txt

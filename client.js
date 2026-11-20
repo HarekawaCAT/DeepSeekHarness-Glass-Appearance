@@ -1,11 +1,13 @@
 /**
  * Client half of the glass-appearance bundle: a wallpaper behind a translucent
- * window, with one opacity percentage per surface and a custom text color.
+ * window, with one opacity percentage per surface, a custom text color, and an
+ * optional launch splash that can play the user's own clip.
  *
  * Performance contract: two owned <style> elements, no theme-service override and
  * no app-wide re-render. The wallpaper tag is rewritten only when the wallpaper
  * changes (it may hold a large data URL); the token tag is rewritten at most once
- * per animation frame, so dragging a slider stays smooth.
+ * per animation frame, so dragging a slider stays smooth. The splash is one
+ * self-removing fixed element: it preempts no host render and leaves no style tag.
  */
 window.__ModuleLoader__.load({
   id: 'dsh-glass-appearance',
@@ -40,6 +42,31 @@ window.__ModuleLoader__.load({
         'video.asset.note':
           'Drop a video at <plugin>/resources/background.mp4: the plugin serves it locally, so it survives restarts and keeps working offline.',
         'video.missing': 'resources/background.mp4 was not found — falling back to the wallpaper.',
+        splash: 'Launch splash',
+        'splash.on': 'Splash on launch',
+        'splash.style': 'Entrance',
+        'splash.style.fade': 'Fade',
+        'splash.style.zoom': 'Zoom',
+        'splash.style.rise': 'Rise',
+        'splash.duration': 'Stay',
+        'splash.ms': '{value} ms',
+        'splash.text': 'Splash text',
+        'splash.text.ph': 'Empty shows DeepSeek HARNESS',
+        'splash.video': 'Video splash',
+        'splash.video.pick': 'Choose video…',
+        'splash.video.url': 'Video URL (https://…)',
+        'splash.video.asset': 'Use resources/splash.mp4',
+        'splash.video.cap': 'Longest play',
+        'splash.dim': 'Video dim',
+        'splash.preview': 'Preview',
+        'splash.skip': 'Click or press Esc to skip',
+        'splash.note':
+          'Plays once on every page load. Click anywhere or press Esc to skip, and the clip is always muted because browsers block autoplay with sound.',
+        'splash.video.note':
+          'A local file only lasts this run; paste an https URL or use resources/splash.mp4 to keep it across restarts.',
+        'splash.asset.note':
+          'Drop a clip at <plugin>/resources/splash.mp4: the plugin serves it locally, so it survives restarts and keeps working offline.',
+        'splash.missing': 'resources/splash.mp4 was not found — the splash falls back to the animation.',
         mask: 'Wallpaper dim',
         opacity: 'Opacity',
         'op.sidebar': 'Sidebar',
@@ -104,6 +131,30 @@ window.__ModuleLoader__.load({
         'video.asset.note':
           '把视频放到插件目录的 resources/background.mp4：由插件本地代发，重启后依然有效，离线也能用。',
         'video.missing': '没找到 resources/background.mp4，已回退到背景图。',
+        splash: '开屏',
+        'splash.on': '启动时播放开屏',
+        'splash.style': '入场动画',
+        'splash.style.fade': '淡入',
+        'splash.style.zoom': '缩放',
+        'splash.style.rise': '上浮',
+        'splash.duration': '停留时长',
+        'splash.ms': '{value} ms',
+        'splash.text': '开屏文字',
+        'splash.text.ph': '留空则显示 DeepSeek HARNESS',
+        'splash.video': '视频开屏',
+        'splash.video.pick': '选择视频文件…',
+        'splash.video.url': '视频地址（https://…）',
+        'splash.video.asset': '使用 resources/splash.mp4',
+        'splash.video.cap': '最长播放',
+        'splash.dim': '视频遮罩',
+        'splash.preview': '预览',
+        'splash.skip': '点击或按 Esc 跳过',
+        'splash.note':
+          '每次打开页面播放一次。点击任意处或按 Esc 跳过；浏览器禁止带声音自动播放，所以视频一律静音。',
+        'splash.video.note': '本地视频只对本次运行有效；想长期保留请填 https 地址或使用 resources/splash.mp4。',
+        'splash.asset.note':
+          '把片段放到插件目录的 resources/splash.mp4：由插件本地代发，重启后依然有效，离线也能用。',
+        'splash.missing': '没找到 resources/splash.mp4，开屏会回退到动画。',
         mask: '背景遮罩',
         opacity: '不透明度',
         'op.sidebar': '侧边栏',
@@ -196,6 +247,11 @@ window.__ModuleLoader__.load({
     /** The Host half serves `<package>/resources/` at this prefix. */
     const ASSET_ROUTE = '/glass-assets/';
     const ASSET_VIDEO = 'background.mp4';
+    /** Optional splash clip served from `resources/`; any other name works through the URL field. */
+    const ASSET_SPLASH = 'splash.mp4';
+    const SPLASH_STYLES = ['fade', 'zoom', 'rise'];
+    /** Above every host layer, including the settings modal that hosts the preview button. */
+    const SPLASH_Z = 2147483000;
 
     /** HEAD-probe results per asset URL, so the video only takes over once it exists. */
     const assetState = new Map();
@@ -228,6 +284,12 @@ window.__ModuleLoader__.load({
       if (!current.videoUrl.startsWith('asset:')) return false;
       const entry = assetState.get(resolveSource(current.videoUrl));
       return entry !== undefined && entry.ok === false;
+    }
+
+    /** HEAD-probe the splash clip the first time the settings page asks for it. */
+    function splashAssetMissing(current) {
+      if (!current.splash.videoUrl.startsWith('asset:')) return false;
+      return assetReady(resolveSource(current.splash.videoUrl)).ok === false;
     }
     const MODES = ['auto', 'dark', 'light'];
     const PARTS = [
@@ -270,6 +332,16 @@ window.__ModuleLoader__.load({
       text: '',
       accountName: '',
       accountAvatar: '',
+      splash: {
+        on: true,
+        style: 'fade',
+        duration: 1600,
+        text: '',
+        video: false,
+        videoUrl: '',
+        videoCap: 6000,
+        dim: 35,
+      },
       op: { sidebar: 55, panel: 82, card: 64, menu: 86, input: 82, add: 70, bubble: 80, ask: 85, toBottom: 80, hint: 88 },
     };
 
@@ -314,6 +386,7 @@ window.__ModuleLoader__.load({
     function normalize(raw) {
       const input = raw !== null && typeof raw === 'object' ? raw : {};
       const op = input.op !== null && typeof input.op === 'object' ? input.op : {};
+      const splashInput = input.splash !== null && typeof input.splash === 'object' ? input.splash : {};
       const blurInput = input.blur;
       const blur = blurInput !== null && typeof blurInput === 'object' ? blurInput : {};
       const legacyBlur = typeof blurInput === 'number' ? blurInput : undefined;
@@ -341,6 +414,20 @@ window.__ModuleLoader__.load({
         text: isHex(input.text) ? input.text.toLowerCase() : '',
         accountName: typeof input.accountName === 'string' ? input.accountName.slice(0, 80) : '',
         accountAvatar: typeof input.accountAvatar === 'string' ? input.accountAvatar.slice(0, 3_500_000) : '',
+        splash: {
+          on: splashInput.on !== false,
+          style: SPLASH_STYLES.includes(splashInput.style) ? splashInput.style : DEFAULTS.splash.style,
+          duration: percent(splashInput.duration === undefined ? DEFAULTS.splash.duration : splashInput.duration, 800, 4000),
+          text: typeof splashInput.text === 'string' ? splashInput.text.slice(0, 48) : '',
+          video: splashInput.video === true,
+          videoUrl: typeof splashInput.videoUrl === 'string' ? splashInput.videoUrl.slice(0, 2000) : '',
+          videoCap: percent(
+            splashInput.videoCap === undefined ? DEFAULTS.splash.videoCap : splashInput.videoCap,
+            1_500,
+            12_000,
+          ),
+          dim: percent(splashInput.dim === undefined ? DEFAULTS.splash.dim : splashInput.dim, 0, 80),
+        },
         op: {
           sidebar: percent(op.sidebar === undefined ? DEFAULTS.op.sidebar : op.sidebar, 8, 100),
           panel: percent(op.panel === undefined ? DEFAULTS.op.panel : op.panel, 8, 100),
@@ -362,6 +449,7 @@ window.__ModuleLoader__.load({
         const loaded = normalize(raw === null ? {} : JSON.parse(raw));
         // A blob URL dies with its page, so a locally picked video cannot be restored.
         if (loaded.videoUrl.startsWith('blob:')) loaded.videoUrl = '';
+        if (loaded.splash.videoUrl.startsWith('blob:')) loaded.splash.videoUrl = '';
         return loaded;
       } catch (error) {
         return normalize({});
@@ -375,6 +463,7 @@ window.__ModuleLoader__.load({
         ...patch,
         op: { ...state.op, ...(patch.op || {}) },
         blur: { ...state.blur, ...(patch.blur || {}) },
+        splash: { ...state.splash, ...(patch.splash || {}) },
       });
       if (state.image !== previous.image) imageRev += 1;
       try {
@@ -625,6 +714,186 @@ window.__ModuleLoader__.load({
 
     // #endregion
 
+    // #region splash
+
+    /**
+     * The boot screen: the same wallpaper, the wordmark, and an optional clip. It is the
+     * only element this plugin paints above the host, it lives for at most one animation,
+     * and every step is best-effort: the module also carries the settings page, so a
+     * throwing splash must never take the row down.
+     *
+     * @param preview - true renders the current settings even when `splash.on` is off.
+     * @returns a disposer that removes the splash immediately.
+     */
+    function playSplash(preview) {
+      const noop = () => {};
+      try {
+        const conf = state.splash;
+        if (preview !== true && conf.on !== true) return noop;
+        if (document.body === null || document.body === undefined) return noop;
+        if (document.querySelector('[data-dsh-glass-splash]') !== null) return noop;
+
+        const colors = palette(state);
+        const text = colors.text;
+        const reduced =
+          typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const source = conf.video === true ? resolveSource(conf.videoUrl) : '';
+        const videoOn = source !== '';
+        // A clip plays once, bounded by its own cap; the animation simply stays `duration`.
+        const hold = videoOn ? conf.videoCap : reduced ? Math.min(conf.duration, 1_200) : conf.duration;
+
+        const overlay = document.createElement('div');
+        overlay.setAttribute('data-dsh-glass-splash', '');
+        overlay.setAttribute('aria-hidden', 'true');
+        overlay.style.cssText =
+          'position:fixed;inset:0;z-index:' + SPLASH_Z + ';display:flex;align-items:center;justify-content:center;' +
+          'overflow:hidden;cursor:pointer;user-select:none;will-change:opacity;' +
+          'background-color:' + (colors.scheme === 'dark' ? '#06080f' : '#f2f5ff') + ';' +
+          'background-image:' + wallpaper(state, colors) + ';background-size:cover;' +
+          'background-position:center;background-repeat:no-repeat';
+
+        let video = null;
+        if (videoOn) {
+          video = document.createElement('video');
+          video.setAttribute('data-dsh-glass-splash-video', '');
+          video.muted = true;
+          video.autoplay = true;
+          video.playsInline = true;
+          video.setAttribute('preload', 'auto');
+          video.setAttribute('src', source);
+          video.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none';
+          overlay.appendChild(video);
+          // The clip may be bright: a wash keeps the wordmark and the hint readable.
+          const wash = document.createElement('div');
+          wash.style.cssText =
+            'position:absolute;inset:0;pointer-events:none;background:rgba(0,0,0,' +
+            ((conf.dim / 100) * 0.9).toFixed(3) + ')';
+          overlay.appendChild(wash);
+        }
+
+        // Text only: the wordmark sits between two tapering rules.
+        const mark = document.createElement('div');
+        mark.style.cssText =
+          'position:relative;display:flex;flex-direction:row;align-items:center;gap:20px;' +
+          'max-width:100%;padding:0 24px;pointer-events:none';
+        // Each rule fades away from the wordmark instead of ending on a hard edge.
+        const ruleStyle =
+          'display:block;flex:none;width:clamp(28px,5vw,56px);height:2px;border-radius:1px;opacity:.7;';
+        const leftRule = document.createElement('span');
+        leftRule.style.cssText =
+          ruleStyle + 'background:linear-gradient(to right,rgba(0,0,0,0),' + rgba(text, 0.9) + ')';
+        const rightRule = document.createElement('span');
+        rightRule.style.cssText =
+          ruleStyle + 'background:linear-gradient(to left,rgba(0,0,0,0),' + rgba(text, 0.9) + ')';
+        const custom = typeof conf.text === 'string' ? conf.text.trim() : '';
+        const word = document.createElement('span');
+        word.textContent = custom === '' ? HERO_TEXT.headline : custom;
+        word.style.cssText =
+          'font-size:clamp(20px,3.4vw,28px);line-height:1.3;font-weight:510;letter-spacing:.3em;' +
+          'text-indent:.3em;white-space:nowrap;color:' + rgba(text, 0.96) +
+          ';text-shadow:0 2px 28px rgba(0,0,0,.45)';
+        mark.append(leftRule, word, rightRule);
+        overlay.appendChild(mark);
+
+        const hint = document.createElement('div');
+        hint.textContent = translate('splash.skip');
+        hint.style.cssText =
+          'position:absolute;bottom:26px;left:0;right:0;text-align:center;font-size:11px;line-height:16px;' +
+          'letter-spacing:.08em;color:' + rgba(text, 0.5) + ';pointer-events:none';
+        overlay.appendChild(hint);
+
+        const timers = new Set();
+        const later = (fn, ms) => {
+          const id = window.setTimeout(() => {
+            timers.delete(id);
+            fn();
+          }, ms);
+          timers.add(id);
+        };
+
+        const teardown = () => {
+          for (const id of timers) window.clearTimeout(id);
+          timers.clear();
+          window.removeEventListener('keydown', onKey, true);
+          if (video !== null && typeof video.pause === 'function') video.pause();
+          overlay.remove();
+        };
+
+        let closed = false;
+        const close = () => {
+          if (closed) return;
+          closed = true;
+          if (reduced === true || typeof overlay.animate !== 'function') {
+            teardown();
+            return;
+          }
+          try {
+            const exit = overlay.animate([{ opacity: 1 }, { opacity: 0 }], {
+              duration: 420,
+              easing: 'ease-out',
+              fill: 'forwards',
+            });
+            exit.addEventListener('finish', teardown);
+            exit.addEventListener('cancel', teardown);
+          } catch (error) {
+            teardown();
+            return;
+          }
+          // `finish` is the normal path; the timer only covers a dropped animation frame.
+          later(teardown, 520);
+        };
+        const onKey = (event) => {
+          if (event.key === 'Escape' || event.key === 'Esc') close();
+        };
+
+        if (reduced === false && typeof mark.animate === 'function') {
+          const keys =
+            conf.style === 'zoom'
+              ? [{ opacity: 0, transform: 'scale(.94)' }, { opacity: 1, transform: 'scale(1)' }]
+              : conf.style === 'rise'
+                ? [{ opacity: 0, transform: 'translateY(26px)' }, { opacity: 1, transform: 'translateY(0)' }]
+                : [{ opacity: 0 }, { opacity: 1 }];
+          try {
+            mark.animate(keys, {
+              duration: Math.max(220, Math.min(720, Math.round(hold * 0.5))),
+              easing: 'cubic-bezier(.22,.7,.2,1)',
+              fill: 'both',
+            });
+          } catch (error) {
+            /* Without motion the splash still reads; never retry it. */
+          }
+        }
+
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', close);
+        overlay.addEventListener('touchstart', close, { passive: true });
+        window.addEventListener('keydown', onKey, true);
+        later(close, hold);
+
+        if (video !== null) {
+          video.addEventListener('ended', close);
+          // A missing or undecodable clip closes the splash instead of holding a blank frame.
+          video.addEventListener('error', close);
+          const played = typeof video.play === 'function' ? video.play() : undefined;
+          if (played !== null && played !== undefined && typeof played.catch === 'function') {
+            played.catch(() => {
+              video.style.display = 'none';
+            });
+          }
+        }
+
+        return () => {
+          closed = true;
+          teardown();
+        };
+      } catch (error) {
+        console.warn('[glass-appearance] splash skipped', error);
+        return noop;
+      }
+    }
+
+    // #endregion
+
     // #region settings page
 
     const PAGE_CSS =
@@ -635,7 +904,7 @@ window.__ModuleLoader__.load({
       '.ga-sub{margin:0 0 2px;color:var(--dsw-alias-label-primary);font-size:13px;font-weight:510;line-height:22px}' +
       '.ga-row{display:flex;align-items:center;gap:16px;padding:10px 0}' +
       '.ga-label{flex:1;min-width:0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}' +
-      '.ga-control{display:inline-flex;align-items:center;gap:8px;flex:none}' +
+      '.ga-control{display:inline-flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;flex:none}' +
       '.ga-chips{display:flex;flex-wrap:wrap;gap:6px;padding:6px 0}' +
       '.ga-range{width:190px;accent-color:var(--dsw-alias-brand-primary)}' +
       '.ga-value{min-width:44px;text-align:right;color:var(--dsw-alias-label-secondary);font-size:12px;font-variant-numeric:tabular-nums}' +
@@ -884,6 +1153,121 @@ window.__ModuleLoader__.load({
             ? h('p', { key: 'videoMissing', className: 'ga-warn' }, t('video.missing'))
             : null,
         ]),
+        h('div', { key: 'splash', className: 'ga-section' }, [
+          h('div', { key: 'sub', className: 'ga-sub' }, t('splash')),
+          row('splashOn', t('splash.on'), [
+            chip('splashOn', current.splash.on ? t('on') : t('off'), current.splash.on, () =>
+              set({ splash: { on: current.splash.on !== true } }),
+            ),
+          ]),
+          row(
+            'splashStyle',
+            t('splash.style'),
+            SPLASH_STYLES.map((id) =>
+              chip('splashStyle-' + id, t('splash.style.' + id), current.splash.style === id, () =>
+                set({ splash: { style: id } }),
+              ),
+            ),
+          ),
+          slider('splashDuration', t('splash.duration'), current.splash.duration, 800, 4000, t('splash.ms'), (value) =>
+            set({ splash: { duration: value } }),
+          ),
+          row('splashText', t('splash.text'), [
+            h('input', {
+              key: 'value',
+              className: 'ga-field',
+              type: 'text',
+              spellCheck: false,
+              autoComplete: 'off',
+              value: current.splash.text,
+              placeholder: t('splash.text.ph'),
+              'aria-label': t('splash.text'),
+              onChange: (event) => set({ splash: { text: event.currentTarget.value.slice(0, 48) } }),
+            }),
+          ]),
+          row('splashVideo', t('splash.video'), [
+            chip('splashVideo', current.splash.video ? t('on') : t('off'), current.splash.video, () =>
+              set({ splash: { video: current.splash.video !== true } }),
+            ),
+          ]),
+          current.splash.video === false
+            ? null
+            : h('div', { key: 'splashPick', className: 'ga-chips' }, [
+                h('span', { key: 'pick', className: 'ga-chip' }, [
+                  t('splash.video.pick'),
+                  h('input', {
+                    key: 'file',
+                    className: 'ga-file',
+                    type: 'file',
+                    accept: 'video/*',
+                    'aria-label': t('splash.video.pick'),
+                    onChange: (event) => {
+                      const file = event.currentTarget.files && event.currentTarget.files[0];
+                      if (file !== undefined && file !== null) {
+                        try {
+                          set({ splash: { video: true, videoUrl: URL.createObjectURL(file) } });
+                        } catch (error) {
+                          /* Blob URLs unavailable: the URL field and resources/ still work. */
+                        }
+                      }
+                      event.currentTarget.value = '';
+                    },
+                  }),
+                ]),
+                chip(
+                  'splashAsset',
+                  t('splash.video.asset'),
+                  current.splash.videoUrl === 'asset:' + ASSET_SPLASH,
+                  () => set({ splash: { video: true, videoUrl: 'asset:' + ASSET_SPLASH } }),
+                ),
+                chip('splashFolder', t('video.folder'), false, () => {
+                  fetch('/glass-resources/open', { method: 'POST' }).catch(() => {});
+                }),
+                current.splash.videoUrl === ''
+                  ? null
+                  : chip('clearSplash', t('image.clear'), false, () => set({ splash: { videoUrl: '' } })),
+              ]),
+          current.splash.video === false
+            ? null
+            : h('input', {
+                key: 'splashUrl',
+                className: 'ga-input',
+                type: 'text',
+                spellCheck: false,
+                autoComplete: 'off',
+                value:
+                  current.splash.videoUrl.startsWith('blob:') ||
+                  current.splash.videoUrl === 'asset:' + ASSET_SPLASH
+                    ? ''
+                    : current.splash.videoUrl,
+                placeholder: t('splash.video.url'),
+                'aria-label': t('splash.video.url'),
+                onChange: (event) => set({ splash: { video: true, videoUrl: cleanImage(event.currentTarget.value) } }),
+              }),
+          current.splash.video === false
+            ? null
+            : slider('splashCap', t('splash.video.cap'), current.splash.videoCap, 1_500, 12_000, t('splash.ms'), (value) =>
+                set({ splash: { videoCap: value } }),
+              ),
+          current.splash.video === false
+            ? null
+            : slider('splashDim', t('splash.dim'), current.splash.dim, 0, 80, t('pct'), (value) =>
+                set({ splash: { dim: value } }),
+              ),
+          current.splash.video === false
+            ? null
+            : h('p', { key: 'splashVideoNote', className: 'ga-note' }, t('splash.video.note')),
+          current.splash.video === false
+            ? null
+            : h('p', { key: 'splashAssetNote', className: 'ga-note' }, t('splash.asset.note')),
+          splashAssetMissing(current)
+            ? h('p', { key: 'splashMissing', className: 'ga-warn' }, t('splash.missing'))
+            : null,
+          h('p', { key: 'splashNote', className: 'ga-note' }, t('splash.note')),
+          row('splashPreview', t('splash.preview'), [
+            chip('splashPreview', t('splash.preview'), false, () => playSplash(true)),
+          ]),
+        ]),
         h('div', { key: 'opacity', className: 'ga-section' }, [
           h('div', { key: 'sub', className: 'ga-sub' }, t('opacity')),
           ...PARTS.map(([id, key]) =>
@@ -1081,6 +1465,15 @@ window.__ModuleLoader__.load({
             glassTag.remove();
           };
         }, 'glass-appearance: paint');
+
+        // The splash is created once per page load, before the shell paints, and owns its
+        // own removal: the disposer only covers a plugin unload in the middle of it.
+        ctx.effect(() => {
+          const dispose = playSplash(false);
+          return () => {
+            if (typeof dispose === 'function') dispose();
+          };
+        }, 'glass-appearance: splash');
 
         ctx.slots.inject('settings.section', () =>
           ctx.slots.register(

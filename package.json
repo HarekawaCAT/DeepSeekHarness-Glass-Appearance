@@ -1,8 +1,8 @@
 {
   "name": "dsh-glass-appearance",
-  "version": "1.8.2",
+  "version": "1.9.2",
   "type": "module",
-  "description": "Translucent sidebar, dialogs and cards over a custom wallpaper for the DeepSeek Harness Web UI, with per-panel opacity and blur",
+  "description": "Translucent sidebar, dialogs and cards over a custom wallpaper for the DeepSeek Harness Web UI, with a launch splash, per-panel opacity and blur",
   "license": "MIT",
   "keywords": [
     "dsh-plugin",
